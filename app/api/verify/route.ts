@@ -118,6 +118,9 @@ export async function POST(request: NextRequest) {
                   if (/^(?:0x)?[a-fA-F0-9]{64}$/.test(potentialRoot)) {
                     proposalData.merkleRoot = potentialRoot.startsWith('0x') ? potentialRoot.toLowerCase() : `0x${potentialRoot.toLowerCase()}`;
                     console.log('[API /verify] Found merkle root in distribution data:', proposalData.merkleRoot);
+                    
+                    // Also store the fetched data for later use when parsing distribution
+                    proposalData.distributionData = response.data;
                     break;
                   }
                 }
@@ -184,29 +187,35 @@ export async function POST(request: NextRequest) {
       
       console.log('[API /verify] Distribution URL:', distributionUrl);
 
-      // Fetch distribution data
-      console.log('[API /verify] Fetching distribution data from:', distributionUrl);
+      // Fetch distribution data (or use cached data if already fetched)
+      console.log('[API /verify] Getting distribution data from:', distributionUrl);
       const ipfsManager = new IPFSGatewayManager();
       let distributionResponse;
       
-      try {
-        distributionResponse = await ipfsManager.fetch(distributionUrl);
-        console.log('[API /verify] Distribution data fetched successfully');
-      } catch (fetchError) {
-        console.error('[API /verify] Failed to fetch distribution data:', fetchError);
-        return NextResponse.json(
-          { 
-            error: 'Failed to fetch distribution data',
-            details: {
-              url: distributionUrl,
-              error: fetchError instanceof Error ? fetchError.message : 'Unknown error',
-              suggestion: 'The IPFS content may be unavailable or in an unsupported format. Try providing the merkle root manually.'
+      // Check if we already have cached distribution data from merkle root fetch
+      if (proposalData.distributionData) {
+        console.log('[API /verify] Using cached distribution data from previous fetch');
+        distributionResponse = { data: proposalData.distributionData };
+      } else {
+        try {
+          distributionResponse = await ipfsManager.fetch(distributionUrl);
+          console.log('[API /verify] Distribution data fetched successfully');
+        } catch (fetchError) {
+          console.error('[API /verify] Failed to fetch distribution data:', fetchError);
+          return NextResponse.json(
+            { 
+              error: 'Failed to fetch distribution data',
+              details: {
+                url: distributionUrl,
+                error: fetchError instanceof Error ? fetchError.message : 'Unknown error',
+                suggestion: 'The IPFS content may be unavailable or in an unsupported format. Try providing the merkle root manually.'
+              },
+              proposalTitle: proposal.title,
+              extractedData: proposalData
             },
-            proposalTitle: proposal.title,
-            extractedData: proposalData
-          },
-          { status: 400 }
-        );
+            { status: 400 }
+          );
+        }
       }
       
       console.log('[API /verify] Distribution data fetched, parsing...');
@@ -357,15 +366,40 @@ function parseDistributionData(data: any): DistributionData[] {
     }
   }
   
-  // Format 4: Object with merkleRoot and other metadata
-  if (data.merkleRoot && (data.recipients || data.claims || data.distribution)) {
+  // Format 4: Object with proofs array (oSnap/ParaSwap style)
+  if (data.proofs && Array.isArray(data.proofs)) {
+    console.log('[parseDistributionData] Processing proofs array format, length:', data.proofs.length);
+    
+    const result = data.proofs.map((proof: any, index: number) => {
+      // Try multiple field names for address
+      const address = proof.user || proof.account || proof.address || proof.recipient;
+      // Try multiple field names for amount
+      const amount = proof.amount || proof.claimableAmount || proof.value || proof.balance;
+      
+      if (!address) {
+        throw new Error(`Missing address field in proof entry ${index}. Available fields: ${Object.keys(proof).join(', ')}`);
+      }
+      
+      return {
+        address,
+        amount: String(amount || 0),
+        index: proof.index !== undefined ? proof.index : index
+      };
+    });
+    
+    console.log('[parseDistributionData] Successfully parsed proofs format, entries:', result.length);
+    return result;
+  }
+  
+  // Format 5: Object with merkleRoot and other metadata
+  if (data.merkleRoot && (data.recipients || data.claims || data.distribution || data.proofs)) {
     console.log('[parseDistributionData] Found merkleRoot with distribution data');
     // Try to find the actual distribution data
-    const distData = data.recipients || data.claims || data.distribution;
+    const distData = data.recipients || data.claims || data.distribution || data.proofs;
     return parseDistributionData(distData);
   }
   
-  // Format 5: Object with addresses as keys (simple key-value pairs)
+  // Format 6: Object with addresses as keys (simple key-value pairs)
   if (typeof data === 'object' && data !== null) {
     const keys = Object.keys(data);
     

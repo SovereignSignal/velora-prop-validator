@@ -185,6 +185,15 @@ export class IPFSGatewayManager {
     // Try common distribution file names first
     const priorityFiles = ['distribution.json', 'merkle.json', 'data.json', 'recipients.json', 'airdrop.json'];
     
+    // Also look for merkle-data files (common in oSnap proposals)
+    const merkleDataFiles = jsonFiles.filter(f => f.includes('merkle-data') || f.includes('merkle_data'));
+    if (merkleDataFiles.length > 0) {
+      // Prefer chain-1 files over others
+      const chain1File = merkleDataFiles.find(f => f.includes('chain-1')) || merkleDataFiles[0];
+      priorityFiles.unshift(chain1File); // Add to beginning of priority list
+      console.log(`[IPFS] Found merkle-data file(s), prioritizing: ${chain1File}`);
+    }
+    
     for (const priorityFile of priorityFiles) {
       if (jsonFiles.includes(priorityFile)) {
         try {
@@ -197,6 +206,11 @@ export class IPFSGatewayManager {
           if (response.ok) {
             const data = await response.json();
             console.log(`[IPFS] Successfully fetched ${priorityFile} from directory`);
+            
+            // Log a preview of the data structure for debugging
+            const preview = JSON.stringify(data, null, 2).substring(0, 200);
+            console.log(`[IPFS] Data structure preview: ${preview}...`);
+            
             return data;
           }
         } catch (error) {
@@ -205,11 +219,13 @@ export class IPFSGatewayManager {
       }
     }
     
-    // Try the first JSON file if no priority files found
-    if (jsonFiles.length > 0) {
-      const firstFile = jsonFiles[0];
+    // Try other JSON files, but avoid proposal files (they contain transaction data)
+    const nonProposalFiles = jsonFiles.filter(f => !f.includes('proposal'));
+    
+    if (nonProposalFiles.length > 0) {
+      const firstFile = nonProposalFiles[0];
       try {
-        console.log(`[IPFS] Attempting to fetch first JSON file: ${firstFile}`);
+        console.log(`[IPFS] Attempting to fetch non-proposal file: ${firstFile}`);
         const fileUrl = `${gateway.url}${dirCid}/${firstFile}`;
         const response = await fetch(fileUrl, {
           headers: { 'Accept': 'application/json' }
