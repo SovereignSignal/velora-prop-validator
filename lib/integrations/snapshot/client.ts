@@ -1,15 +1,22 @@
 import { ApolloClient, InMemoryCache, gql, createHttpLink } from '@apollo/client';
 import { SnapshotProposal, SnapshotGraphQLResponse } from '@/types/snapshot';
 import { SnapshotError } from '@/types/errors';
+import fetch from 'cross-fetch';
 
 export class SnapshotClient {
   private client: any;
   
   constructor(endpoint: string = 'https://hub.snapshot.org/graphql') {
-    // Create Apollo Client with proper configuration
-    // Create HTTP link for the GraphQL endpoint
+    console.log('[SnapshotClient] Initializing with endpoint:', endpoint);
+    
+    // Create HTTP link for the GraphQL endpoint with custom fetch
     const httpLink = createHttpLink({
       uri: endpoint,
+      fetch,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Velora-Verifier/1.0'
+      }
     });
     
     // Initialize Apollo Client
@@ -33,6 +40,8 @@ export class SnapshotClient {
    * Fetches a proposal by ID
    */
   async getProposal(proposalId: string): Promise<SnapshotProposal> {
+    console.log('[SnapshotClient] Fetching proposal:', proposalId);
+    
     const PROPOSAL_QUERY = gql`
       query Proposal($id: String!) {
         proposal(id: $id) {
@@ -69,19 +78,37 @@ export class SnapshotClient {
     `;
     
     try {
+      console.log('[SnapshotClient] Executing GraphQL query for proposal:', proposalId);
       const result = await this.client.query({
         query: PROPOSAL_QUERY,
         variables: { id: proposalId }
       });
       
+      console.log('[SnapshotClient] GraphQL query result:', result.data ? 'Data received' : 'No data');
+      
       if (!result.data?.proposal) {
+        console.error('[SnapshotClient] Proposal not found in response');
         throw new SnapshotError(`Proposal not found: ${proposalId}`, proposalId);
       }
       
+      console.log('[SnapshotClient] Successfully fetched proposal:', result.data.proposal.title);
       return result.data.proposal as SnapshotProposal;
     } catch (error) {
+      console.error('[SnapshotClient] Error fetching proposal:', error);
+      
       if (error instanceof SnapshotError) {
         throw error;
+      }
+      
+      // Check for Apollo/GraphQL errors
+      if (error && typeof error === 'object') {
+        const apolloError = error as any;
+        if (apolloError.graphQLErrors) {
+          console.error('[SnapshotClient] GraphQL errors:', apolloError.graphQLErrors);
+        }
+        if (apolloError.networkError) {
+          console.error('[SnapshotClient] Network error:', apolloError.networkError);
+        }
       }
       
       throw new SnapshotError(
@@ -166,26 +193,35 @@ export class SnapshotClient {
    * Extracts proposal ID from a Snapshot URL
    */
   static extractProposalId(url: string): string | null {
-    // Match various Snapshot URL formats
+    console.log('[SnapshotClient] Extracting proposal ID from URL:', url);
+    
+    // Match various Snapshot URL formats with hash routing
     const patterns = [
-      /snapshot\.org\/#\/[^/]+\/proposal\/([^/?]+)/,
-      /snapshot\.page\/#\/[^/]+\/proposal\/([^/?]+)/,
-      /snapshot\.box\/#\/[^/]+\/proposal\/([^/?]+)/,
-      /proposal\/([^/?]+)/
+      // Hash-based routing (most common)
+      /snapshot\.org\/#\/[^/]+\/proposal\/(0x[a-fA-F0-9]{64}|Qm[1-9A-HJ-NP-Za-km-z]{44})/,
+      /snapshot\.page\/#\/[^/]+\/proposal\/(0x[a-fA-F0-9]{64}|Qm[1-9A-HJ-NP-Za-km-z]{44})/,
+      /snapshot\.box\/#\/[^/]+\/proposal\/(0x[a-fA-F0-9]{64}|Qm[1-9A-HJ-NP-Za-km-z]{44})/,
+      // Non-hash routing (legacy)
+      /snapshot\.org\/[^/]+\/proposal\/(0x[a-fA-F0-9]{64}|Qm[1-9A-HJ-NP-Za-km-z]{44})/,
+      // Generic proposal pattern
+      /proposal\/(0x[a-fA-F0-9]{64}|Qm[1-9A-HJ-NP-Za-km-z]{44})/
     ];
     
     for (const pattern of patterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
+        console.log('[SnapshotClient] Extracted proposal ID:', match[1]);
         return match[1];
       }
     }
     
     // If no pattern matches, check if it's already a proposal ID
     if (/^0x[a-fA-F0-9]{64}$/.test(url) || /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(url)) {
+      console.log('[SnapshotClient] URL is already a proposal ID:', url);
       return url;
     }
     
+    console.error('[SnapshotClient] Failed to extract proposal ID from URL:', url);
     return null;
   }
   
@@ -193,20 +229,29 @@ export class SnapshotClient {
    * Extracts space name from a Snapshot URL
    */
   static extractSpaceName(url: string): string | null {
-    // Match space name from URL
+    console.log('[SnapshotClient] Extracting space name from URL:', url);
+    
+    // Match space name from URL with hash routing
     const patterns = [
+      // Hash-based routing
       /snapshot\.org\/#\/([^/]+)\/proposal/,
       /snapshot\.page\/#\/([^/]+)\/proposal/,
-      /snapshot\.box\/#\/([^/]+)\/proposal/
+      /snapshot\.box\/#\/([^/]+)\/proposal/,
+      // Non-hash routing
+      /snapshot\.org\/([^/]+)\/proposal/,
+      /snapshot\.page\/([^/]+)\/proposal/,
+      /snapshot\.box\/([^/]+)\/proposal/
     ];
     
     for (const pattern of patterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
+        console.log('[SnapshotClient] Extracted space name:', match[1]);
         return match[1];
       }
     }
     
+    console.log('[SnapshotClient] No space name found in URL');
     return null;
   }
 }

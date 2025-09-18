@@ -144,8 +144,8 @@ export class IPFSGatewayManager {
    * Extracts CID from various IPFS URL formats
    */
   private extractCID(input: string): string | null {
-    // Already a CID
-    if (/^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(input)) {
+    // Already a CID (QmHash format - base58, typically 46 chars total)
+    if (/^Qm[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(input)) {
       return input;
     }
     
@@ -156,9 +156,9 @@ export class IPFSGatewayManager {
     
     // IPFS URLs
     const patterns = [
-      /ipfs[:/]+(Qm[1-9A-HJ-NP-Za-km-z]{44})/,
+      /ipfs[:/]+(Qm[1-9A-HJ-NP-Za-km-z]{43,44})/,
       /ipfs[:/]+([a-z0-9]{46,})/,
-      /\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{44})/,
+      /\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{43,44})/,
       /\/ipfs\/([a-z0-9]{46,})/
     ];
     
