@@ -29,7 +29,7 @@ export async function verifyMerkleRoot(
       console.log('[verifyMerkleRoot] ParaSwap fields detected, trying paraswap format first');
     }
     
-    detectedFormat = detectMerkleFormat(distribution, expectedRoot);
+    detectedFormat = detectMerkleFormat(distribution, expectedRoot) ?? undefined;
     
     if (!detectedFormat) {
       // If no format matched, try paraswap if fields suggest it
