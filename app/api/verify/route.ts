@@ -326,9 +326,33 @@ function parseDistributionData(data: any): DistributionData[] {
         throw new Error(`Missing address field in distribution entry ${index}. Available fields: ${Object.keys(item).join(', ')}`);
       }
       
+      // Ensure amount is a valid string representation
+      let amountStr = '0';
+      if (amount !== undefined && amount !== null) {
+        amountStr = String(amount);
+        // Remove any decimals if present (amounts should be in wei)
+        if (amountStr.includes('.')) {
+          console.warn(`[parseDistributionData] Decimal amount detected at index ${index}: ${amountStr}`);
+          // Just take the integer part for BigInt compatibility
+          amountStr = amountStr.split('.')[0] || '0';
+        }
+        // Handle scientific notation
+        if (amountStr.includes('e') || amountStr.includes('E')) {
+          console.warn(`[parseDistributionData] Scientific notation detected at index ${index}: ${amountStr}`);
+          // Try to parse it as a number and convert to string
+          try {
+            const numValue = Number(amountStr);
+            amountStr = Math.floor(numValue).toString();
+          } catch (e) {
+            console.error(`[parseDistributionData] Failed to parse scientific notation: ${amountStr}`);
+            amountStr = '0';
+          }
+        }
+      }
+      
       return {
         address,
-        amount: String(amount || 0),
+        amount: amountStr,
         index: item.index !== undefined ? item.index : index
       };
     });
@@ -380,9 +404,43 @@ function parseDistributionData(data: any): DistributionData[] {
         throw new Error(`Missing address field in proof entry ${index}. Available fields: ${Object.keys(proof).join(', ')}`);
       }
       
+      // Log first few entries to see what the data looks like
+      if (index < 10) {
+        console.log(`[parseDistributionData] Entry ${index}: user=${proof.user}, amount=${proof.amount}, raw proof keys: ${Object.keys(proof).join(', ')}`);
+      }
+      
+      // Ensure amount is a valid string representation
+      let amountStr = '0';
+      if (amount !== undefined && amount !== null) {
+        amountStr = String(amount);
+        // Remove any decimals if present (amounts should be in wei)
+        if (amountStr.includes('.')) {
+          console.warn(`[parseDistributionData] Decimal amount detected at index ${index}: ${amountStr}`);
+          // Just take the integer part for BigInt compatibility
+          amountStr = amountStr.split('.')[0] || '0';
+        }
+        // Handle scientific notation
+        if (amountStr.includes('e') || amountStr.includes('E')) {
+          console.warn(`[parseDistributionData] Scientific notation detected at index ${index}: ${amountStr}`);
+          // Try to parse it as a number and convert to string
+          try {
+            const numValue = Number(amountStr);
+            amountStr = Math.floor(numValue).toString();
+          } catch (e) {
+            console.error(`[parseDistributionData] Failed to parse scientific notation: ${amountStr}`);
+            amountStr = '0';
+          }
+        }
+      } else {
+        // Amount is missing
+        if (index < 10) {
+          console.warn(`[parseDistributionData] Missing amount at index ${index}, using default 0`);
+        }
+      }
+      
       return {
         address,
-        amount: String(amount || 0),
+        amount: amountStr,
         index: proof.index !== undefined ? proof.index : index
       };
     });
