@@ -160,6 +160,43 @@ export function parseProposal(proposal: SnapshotProposal): ProposalData {
   if (proposal.plugins) {
     console.log('[parseProposal] Checking plugins:', Object.keys(proposal.plugins));
     
+    // Check for oSnap plugin (optimistic snapshot)
+    if (proposal.plugins.oSnap) {
+      const oSnapData = proposal.plugins.oSnap;
+      console.log('[parseProposal] oSnap plugin detected:', oSnapData);
+      
+      // oSnap proposals often have the IPFS hash in the plugin data
+      if (typeof oSnapData === 'string') {
+        // Check if it's an IPFS hash
+        if (/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|[a-z0-9]{46,})$/.test(oSnapData) && !data.ipfsUrl) {
+          data.ipfsUrl = oSnapData;
+          console.log('[parseProposal] Found IPFS hash in oSnap data:', oSnapData);
+        }
+        // Check if it's a merkle root
+        else if (/^(?:0x)?[a-fA-F0-9]{64}$/.test(oSnapData) && !data.merkleRoot) {
+          data.merkleRoot = oSnapData.startsWith('0x') ? oSnapData.toLowerCase() : `0x${oSnapData.toLowerCase()}`;
+          console.log('[parseProposal] Found merkle root in oSnap data:', data.merkleRoot);
+        }
+      } else if (typeof oSnapData === 'object') {
+        // Look for IPFS or merkle root in oSnap object
+        const oSnapString = JSON.stringify(oSnapData);
+        
+        // Look for IPFS hashes
+        const ipfsMatch = oSnapString.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{46,})/);
+        if (ipfsMatch && !data.ipfsUrl) {
+          data.ipfsUrl = ipfsMatch[1];
+          console.log('[parseProposal] Found IPFS hash in oSnap object:', data.ipfsUrl);
+        }
+        
+        // Look for merkle roots
+        const merkleMatch = oSnapString.match(/(?:merkle[Rr]oot|root)["\s:]+(?:0x)?([a-fA-F0-9]{64})/);
+        if (merkleMatch && !data.merkleRoot) {
+          data.merkleRoot = `0x${merkleMatch[1].toLowerCase()}`;
+          console.log('[parseProposal] Found merkle root in oSnap object:', data.merkleRoot);
+        }
+      }
+    }
+    
     // Check for SafeSnap plugin
     if (proposal.plugins.safeSnap) {
       const safeSnapData = proposal.plugins.safeSnap;
@@ -182,6 +219,16 @@ export function parseProposal(proposal: SnapshotProposal): ProposalData {
     // Check for other plugins that might contain distribution data
     if (proposal.plugins.poap) {
       console.log('[parseProposal] POAP plugin detected');
+    }
+  }
+  
+  // Additional pattern: Look for IPFS CIDs without typical markers
+  if (!data.ipfsUrl) {
+    // Match standalone IPFS CIDs (base58 Qm... or base32 baf...)
+    const standaloneIPFS = body.match(/(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z0-9]{46,})/);
+    if (standaloneIPFS) {
+      data.ipfsUrl = standaloneIPFS[1];
+      console.log('[parseProposal] Found standalone IPFS CID:', data.ipfsUrl);
     }
   }
   
