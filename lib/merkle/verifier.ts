@@ -19,8 +19,30 @@ export async function verifyMerkleRoot(
   let detectedFormat = format;
   
   if (!detectedFormat) {
-    detectedFormat = detectMerkleFormat(distribution, expectedRoot) || 'custom';
-    console.log(`Auto-detected merkle format: ${detectedFormat}`);
+    // Check for ParaSwap-specific fields
+    const hasParaSwapFields = distribution.some(d => 
+      d.cumulativeClaimableAmount !== undefined || 
+      d.paraBoostScore !== undefined
+    );
+    
+    if (hasParaSwapFields) {
+      console.log('[verifyMerkleRoot] ParaSwap fields detected, trying paraswap format first');
+    }
+    
+    detectedFormat = detectMerkleFormat(distribution, expectedRoot);
+    
+    if (!detectedFormat) {
+      // If no format matched, try paraswap if fields suggest it
+      if (hasParaSwapFields) {
+        console.log('[verifyMerkleRoot] No format matched, defaulting to paraswap due to field structure');
+        detectedFormat = 'paraswap';
+      } else {
+        console.log('[verifyMerkleRoot] No format matched, defaulting to custom');
+        detectedFormat = 'custom';
+      }
+    } else {
+      console.log(`[verifyMerkleRoot] Auto-detected merkle format: ${detectedFormat}`);
+    }
   }
 
   // Generate merkle tree
@@ -30,13 +52,28 @@ export async function verifyMerkleRoot(
   // Compare roots (case-insensitive)
   const success = computedRoot.toLowerCase() === expectedRoot.toLowerCase();
 
+  // Log sample data for debugging
+  if (!success && distribution.length > 0) {
+    console.log('[verifyMerkleRoot] Verification failed. Sample data:');
+    const sample = distribution[0];
+    console.log('  First entry:', {
+      address: sample.address,
+      amount: sample.amount,
+      cumulativeClaimableAmount: sample.cumulativeClaimableAmount,
+      claimableAmount: sample.claimableAmount,
+      hasParaSwapFields: sample.cumulativeClaimableAmount !== undefined
+    });
+    console.log(`  Total entries: ${distribution.length}`);
+    console.log(`  Format used: ${detectedFormat}`);
+  }
+
   return {
     success,
     computedRoot,
     format: detectedFormat,
     details: success 
       ? `Merkle root verified successfully using ${detectedFormat} format`
-      : `Merkle root mismatch. Expected: ${expectedRoot}, Computed: ${computedRoot}`
+      : `Merkle root mismatch using ${detectedFormat} format. Expected: ${expectedRoot}, Computed: ${computedRoot}`
   };
 }
 

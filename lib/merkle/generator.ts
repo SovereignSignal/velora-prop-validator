@@ -5,7 +5,7 @@ import { MerkleTreeError } from '@/types/errors';
 
 const abiCoder = new AbiCoder();
 
-export type MerkleFormat = 'openzeppelin' | 'uniswap' | 'custom';
+export type MerkleFormat = 'openzeppelin' | 'uniswap' | 'custom' | 'paraswap';
 
 /**
  * Generates a merkle tree from distribution data
@@ -26,7 +26,7 @@ export function generateMerkleTree(
 
   // Create merkle tree with keccak256 hashing
   const tree = new MerkleTree(leaves, keccak256, { 
-    sortPairs: true,
+    sort: true, // Changed from sortPairs to match WakeUp Labs implementation
     hashLeaves: false // We already hash in generateLeaf
   });
 
@@ -54,8 +54,13 @@ export function generateLeaf(
   index: number,
   format: MerkleFormat
 ): string {
-  const address = item.address.toLowerCase();
+  // Handle different field names for address (ParaSwap uses both user and account)
+  const address = (item.address || item.user || item.account || '').toLowerCase();
   const amount = item.amount;
+  
+  if (!address) {
+    throw new Error(`Missing address field in distribution entry`);
+  }
 
   switch (format) {
     case 'openzeppelin':
@@ -76,6 +81,33 @@ export function generateLeaf(
           [index, address, amount]
         )
       );
+
+    case 'paraswap':
+      // ParaSwap/WakeUp Labs format (matches their exact implementation)
+      // Detect if it's rewards (has cumulativeClaimableAmount) or refunds
+      const isRewards = item.cumulativeClaimableAmount !== undefined;
+      
+      if (isRewards) {
+        // For rewards: use cumulativeClaimableAmount
+        const cumulativeAmount = item.cumulativeClaimableAmount || amount;
+        // Only log first few for debugging
+        if (index < 3) {
+          console.log(`[generateLeaf] ParaSwap rewards leaf ${index}: address=${address}, cumulativeAmount=${cumulativeAmount}`);
+        }
+        return solidityPackedKeccak256(
+          ['address', 'uint256'],
+          [address, cumulativeAmount]
+        );
+      } else {
+        // For refunds: use amount field
+        if (index < 3) {
+          console.log(`[generateLeaf] ParaSwap refunds leaf ${index}: address=${address}, amount=${amount}`);
+        }
+        return solidityPackedKeccak256(
+          ['address', 'uint256'],
+          [address, amount]
+        );
+      }
 
     case 'custom':
     default:
@@ -125,18 +157,39 @@ export function detectMerkleFormat(
   sampleData: DistributionData[],
   expectedRoot: string
 ): MerkleFormat | null {
-  const formats: MerkleFormat[] = ['openzeppelin', 'uniswap', 'custom'];
+  // Check for ParaSwap-specific fields first
+  const hasParaSwapFields = sampleData.some((item: any) => 
+    item.cumulativeClaimableAmount !== undefined || 
+    item.paraBoostScore !== undefined ||
+    (item.user && item.account) // Has both user and account fields
+  );
+  
+  // Test formats in priority order
+  const formats: MerkleFormat[] = hasParaSwapFields 
+    ? ['paraswap', 'custom', 'openzeppelin', 'uniswap']
+    : ['custom', 'openzeppelin', 'uniswap', 'paraswap'];
+  
+  console.log('[detectMerkleFormat] Testing formats:', formats);
+  console.log('[detectMerkleFormat] Sample data has ParaSwap fields:', hasParaSwapFields);
   
   for (const format of formats) {
     try {
-      const tree = generateMerkleTree(sampleData.slice(0, 10), format);
+      // Test with more data for better accuracy (or all data if < 100 items)
+      const testSize = Math.min(sampleData.length, 100);
+      const tree = generateMerkleTree(sampleData.slice(0, testSize), format);
+      
       if (tree.root.toLowerCase() === expectedRoot.toLowerCase()) {
+        console.log(`[detectMerkleFormat] Format '${format}' matches! Root: ${tree.root}`);
         return format;
+      } else {
+        console.log(`[detectMerkleFormat] Format '${format}' does not match. Got: ${tree.root}`);
       }
     } catch (error) {
+      console.warn(`[detectMerkleFormat] Error testing format '${format}':`, error);
       // Continue trying other formats
     }
   }
   
+  console.warn('[detectMerkleFormat] No format matched the expected root');
   return null;
 }
