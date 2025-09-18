@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, gql } from '@apollo/client';
+import { ApolloClient, InMemoryCache, gql, createHttpLink } from '@apollo/client';
 import { SnapshotProposal, SnapshotGraphQLResponse } from '@/types/snapshot';
 import { SnapshotError } from '@/types/errors';
 
@@ -6,14 +6,24 @@ export class SnapshotClient {
   private client: any;
   
   constructor(endpoint: string = 'https://hub.snapshot.org/graphql') {
-    // Create Apollo Client with basic configuration
-    const cache = new InMemoryCache();
-    this.client = new (ApolloClient as any)({
+    // Create Apollo Client with proper configuration
+    // Create HTTP link for the GraphQL endpoint
+    const httpLink = createHttpLink({
       uri: endpoint,
-      cache: cache,
+    });
+    
+    // Initialize Apollo Client
+    this.client = new ApolloClient({
+      link: httpLink,
+      cache: new InMemoryCache(),
       defaultOptions: {
         query: {
-          fetchPolicy: 'no-cache'
+          fetchPolicy: 'no-cache',
+          errorPolicy: 'all'
+        },
+        watchQuery: {
+          fetchPolicy: 'no-cache',
+          errorPolicy: 'all'
         }
       }
     });
