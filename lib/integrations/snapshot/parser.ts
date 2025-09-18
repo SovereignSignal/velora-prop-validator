@@ -26,6 +26,8 @@ export function parseProposal(proposal: SnapshotProposal): ProposalData {
     /merkle\s*root[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
     /merkleRoot[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
     /root[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
+    // ParaSwap format with backticks
+    /merkle\s+tree\s+root\s+hash[:\s]+`(?:0x)?([a-fA-F0-9]{64})`/i,
     // JSON formats
     /"merkleRoot"[:\s]*"(?:0x)?([a-fA-F0-9]{64})"/i,
     /"merkle_root"[:\s]*"(?:0x)?([a-fA-F0-9]{64})"/i,

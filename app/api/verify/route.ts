@@ -394,19 +394,41 @@ function parseDistributionData(data: any): DistributionData[] {
   if (data.proofs && Array.isArray(data.proofs)) {
     console.log('[parseDistributionData] Processing proofs array format, length:', data.proofs.length);
     
+    // Detect if this is ParaSwap rewards (has cumulativeClaimableAmount) or refunds
+    const firstProof = data.proofs[0];
+    const isParaSwapRewards = firstProof && firstProof.cumulativeClaimableAmount !== undefined;
+    
+    if (isParaSwapRewards) {
+      console.log('[parseDistributionData] Detected ParaSwap rewards distribution (using cumulativeClaimableAmount)');
+    } else {
+      console.log('[parseDistributionData] Processing standard distribution (using amount field)');
+    }
+    
     const result = data.proofs.map((proof: any, index: number) => {
       // Try multiple field names for address
       const address = proof.user || proof.account || proof.address || proof.recipient;
-      // Try multiple field names for amount
-      const amount = proof.amount || proof.claimableAmount || proof.value || proof.balance;
+      
+      // For ParaSwap rewards, use cumulativeClaimableAmount; otherwise use amount
+      let amount;
+      if (isParaSwapRewards && proof.cumulativeClaimableAmount !== undefined) {
+        amount = proof.cumulativeClaimableAmount;
+      } else {
+        // Try multiple field names for amount
+        amount = proof.amount || proof.claimableAmount || proof.value || proof.balance;
+      }
       
       if (!address) {
         throw new Error(`Missing address field in proof entry ${index}. Available fields: ${Object.keys(proof).join(', ')}`);
       }
       
       // Log first few entries to see what the data looks like
-      if (index < 10) {
-        console.log(`[parseDistributionData] Entry ${index}: user=${proof.user}, amount=${proof.amount}, raw proof keys: ${Object.keys(proof).join(', ')}`);
+      if (index < 3) {
+        console.log(`[parseDistributionData] Entry ${index}:`);
+        console.log(`  - address: ${address}`);
+        console.log(`  - amount used: ${amount}`);
+        console.log(`  - cumulativeClaimableAmount: ${proof.cumulativeClaimableAmount}`);
+        console.log(`  - claimableAmount: ${proof.claimableAmount}`);
+        console.log(`  - amount field: ${proof.amount}`);
       }
       
       // Ensure amount is a valid string representation
@@ -438,11 +460,25 @@ function parseDistributionData(data: any): DistributionData[] {
         }
       }
       
-      return {
+      // Include additional fields for ParaSwap format detection
+      const resultEntry: any = {
         address,
         amount: amountStr,
         index: proof.index !== undefined ? proof.index : index
       };
+      
+      // Preserve ParaSwap-specific fields for format detection
+      if (proof.cumulativeClaimableAmount !== undefined) {
+        resultEntry.cumulativeClaimableAmount = String(proof.cumulativeClaimableAmount);
+      }
+      if (proof.claimableAmount !== undefined) {
+        resultEntry.claimableAmount = String(proof.claimableAmount);
+      }
+      if (proof.paraBoostScore !== undefined) {
+        resultEntry.paraBoostScore = String(proof.paraBoostScore);
+      }
+      
+      return resultEntry;
     });
     
     console.log('[parseDistributionData] Successfully parsed proofs format, entries:', result.length);
