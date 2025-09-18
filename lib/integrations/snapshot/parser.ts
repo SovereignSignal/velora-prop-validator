@@ -7,6 +7,7 @@ export interface ProposalData {
   distributionUrl?: string;
   totalAmount?: string;
   recipientCount?: number;
+  distributionData?: any; // Cached distribution data from IPFS fetch
 }
 
 /**
