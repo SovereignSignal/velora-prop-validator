@@ -71,7 +71,7 @@ export function validateDistribution(distribution: DistributionData[]): Validati
   const invalidAmounts = distribution.filter((d, index) => {
     try {
       // Handle different amount formats
-      if (!d.amount && d.amount !== 0 && d.amount !== '0') {
+      if (!d.amount && d.amount !== '0') {
         console.warn(`[validateDistribution] Missing amount at index ${index}`);
         return true; // Missing amount
       }
