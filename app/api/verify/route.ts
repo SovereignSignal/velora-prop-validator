@@ -187,11 +187,63 @@ export async function POST(request: NextRequest) {
       // Fetch distribution data
       console.log('[API /verify] Fetching distribution data from:', distributionUrl);
       const ipfsManager = new IPFSGatewayManager();
-      const distributionResponse = await ipfsManager.fetch(distributionUrl);
+      let distributionResponse;
+      
+      try {
+        distributionResponse = await ipfsManager.fetch(distributionUrl);
+        console.log('[API /verify] Distribution data fetched successfully');
+      } catch (fetchError) {
+        console.error('[API /verify] Failed to fetch distribution data:', fetchError);
+        return NextResponse.json(
+          { 
+            error: 'Failed to fetch distribution data',
+            details: {
+              url: distributionUrl,
+              error: fetchError instanceof Error ? fetchError.message : 'Unknown error',
+              suggestion: 'The IPFS content may be unavailable or in an unsupported format. Try providing the merkle root manually.'
+            },
+            proposalTitle: proposal.title,
+            extractedData: proposalData
+          },
+          { status: 400 }
+        );
+      }
       
       console.log('[API /verify] Distribution data fetched, parsing...');
-      distribution = parseDistributionData(distributionResponse.data);
-      console.log('[API /verify] Parsed distribution entries:', distribution.length);
+      
+      try {
+        distribution = parseDistributionData(distributionResponse.data);
+        console.log('[API /verify] Parsed distribution entries:', distribution.length);
+      } catch (parseError) {
+        console.error('[API /verify] Failed to parse distribution data:', parseError);
+        
+        // Try to provide helpful error message based on the data structure
+        let dataPreview = '';
+        if (typeof distributionResponse.data === 'string') {
+          dataPreview = distributionResponse.data.substring(0, 200);
+        } else if (distributionResponse.data) {
+          dataPreview = JSON.stringify(distributionResponse.data, null, 2).substring(0, 500);
+        }
+        
+        return NextResponse.json(
+          { 
+            error: 'Failed to parse distribution data',
+            details: {
+              parseError: parseError instanceof Error ? parseError.message : 'Unknown error',
+              dataType: typeof distributionResponse.data,
+              dataPreview,
+              supportedFormats: [
+                'Array of objects with address/amount fields',
+                'Object with claims property (Uniswap style)',
+                'Object with addresses as keys and amounts as values'
+              ]
+            },
+            proposalTitle: proposal.title,
+            helpText: 'The distribution data format is not recognized. Please check the data structure.'
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Create verification result
@@ -243,34 +295,100 @@ export async function POST(request: NextRequest) {
  * Parses distribution data from various formats
  */
 function parseDistributionData(data: any): DistributionData[] {
+  console.log('[parseDistributionData] Data type:', typeof data);
+  
   // Handle different distribution formats
   
   // Format 1: Array of objects with address and amount
   if (Array.isArray(data)) {
-    return data.map((item, index) => ({
-      address: item.address || item.recipient || item.account,
-      amount: String(item.amount || item.value || item.balance),
-      index
-    }));
+    console.log('[parseDistributionData] Processing array format, length:', data.length);
+    
+    // Check if it's a valid array of distribution entries
+    if (data.length === 0) {
+      throw new Error('Distribution data array is empty');
+    }
+    
+    const result = data.map((item, index) => {
+      // Try multiple field names for address and amount
+      const address = item.address || item.recipient || item.account || item.wallet || item.to;
+      const amount = item.amount || item.value || item.balance || item.quantity || item.tokens;
+      
+      if (!address) {
+        throw new Error(`Missing address field in distribution entry ${index}. Available fields: ${Object.keys(item).join(', ')}`);
+      }
+      
+      return {
+        address,
+        amount: String(amount || 0),
+        index: item.index !== undefined ? item.index : index
+      };
+    });
+    
+    console.log('[parseDistributionData] Successfully parsed array format, entries:', result.length);
+    return result;
   }
   
   // Format 2: Object with claims property (Uniswap style)
   if (data.claims && typeof data.claims === 'object') {
-    return Object.entries(data.claims).map(([address, claim]: [string, any]) => ({
+    console.log('[parseDistributionData] Processing Uniswap-style claims format');
+    return Object.entries(data.claims).map(([address, claim]: [string, any], idx) => ({
       address,
-      amount: String(claim.amount),
-      index: claim.index || 0
+      amount: String(claim.amount || claim),
+      index: claim.index !== undefined ? claim.index : idx
     }));
   }
   
-  // Format 3: Object with addresses as keys
-  if (typeof data === 'object') {
-    return Object.entries(data).map(([address, amount], index) => ({
-      address,
-      amount: String(amount),
-      index
-    }));
+  // Format 3: Object with recipients/distribution property
+  if (data.recipients && typeof data.recipients === 'object') {
+    console.log('[parseDistributionData] Processing recipients format');
+    if (Array.isArray(data.recipients)) {
+      return parseDistributionData(data.recipients);
+    } else {
+      return parseDistributionData(data.recipients);
+    }
   }
   
-  throw new Error('Unsupported distribution data format');
+  if (data.distribution && typeof data.distribution === 'object') {
+    console.log('[parseDistributionData] Processing distribution format');
+    if (Array.isArray(data.distribution)) {
+      return parseDistributionData(data.distribution);
+    } else {
+      return parseDistributionData(data.distribution);
+    }
+  }
+  
+  // Format 4: Object with merkleRoot and other metadata
+  if (data.merkleRoot && (data.recipients || data.claims || data.distribution)) {
+    console.log('[parseDistributionData] Found merkleRoot with distribution data');
+    // Try to find the actual distribution data
+    const distData = data.recipients || data.claims || data.distribution;
+    return parseDistributionData(distData);
+  }
+  
+  // Format 5: Object with addresses as keys (simple key-value pairs)
+  if (typeof data === 'object' && data !== null) {
+    const keys = Object.keys(data);
+    
+    // Check if this looks like an address-to-amount mapping
+    // Ethereum addresses start with 0x and are 42 characters long
+    const looksLikeAddresses = keys.length > 0 && 
+      keys.filter(k => /^0x[a-fA-F0-9]{40}$/i.test(k)).length > keys.length * 0.5;
+    
+    if (looksLikeAddresses) {
+      console.log('[parseDistributionData] Processing address-to-amount mapping');
+      return Object.entries(data).map(([address, amount], index) => ({
+        address,
+        amount: String(amount),
+        index
+      }));
+    }
+    
+    // If we have very few keys, it might be metadata
+    if (keys.length < 5) {
+      const availableKeys = keys.join(', ');
+      throw new Error(`Object does not appear to contain distribution data. Available keys: ${availableKeys}`);
+    }
+  }
+  
+  throw new Error(`Unsupported distribution data format. Received type: ${typeof data}`);
 }

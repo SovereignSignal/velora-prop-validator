@@ -119,12 +119,30 @@ export class IPFSGatewayManager {
       
       if (contentType?.includes('application/json')) {
         return await response.json();
+      } else if (contentType?.includes('text/html')) {
+        // Check if this is an IPFS directory listing
+        const htmlText = await response.text();
+        if (this.isIPFSDirectoryListing(htmlText)) {
+          console.log(`[IPFS] Detected directory listing for ${cid}, attempting to fetch JSON files`);
+          return await this.fetchFromIPFSDirectory(gateway, cid, htmlText);
+        }
+        // Try to parse as JSON anyway
+        try {
+          return JSON.parse(htmlText);
+        } catch {
+          return htmlText;
+        }
       } else {
         // Try to parse as JSON anyway (some gateways don't set correct content-type)
         const text = await response.text();
         try {
           return JSON.parse(text);
         } catch {
+          // Check if it might be HTML directory listing without proper content-type
+          if (this.isIPFSDirectoryListing(text)) {
+            console.log(`[IPFS] Detected directory listing (no content-type) for ${cid}`);
+            return await this.fetchFromIPFSDirectory(gateway, cid, text);
+          }
           // Return as plain text if JSON parsing fails
           return text;
         }
@@ -138,6 +156,107 @@ export class IPFSGatewayManager {
       
       throw error;
     }
+  }
+  
+  /**
+   * Checks if the content is an IPFS directory listing
+   */
+  private isIPFSDirectoryListing(content: string): boolean {
+    // Check for common patterns in IPFS directory HTML listings
+    return content.includes('Index of') || 
+           content.includes('/ipfs/') && content.includes('<a href=') ||
+           content.includes('ipfs-') && content.includes('<!DOCTYPE html>');
+  }
+  
+  /**
+   * Fetches JSON content from an IPFS directory
+   */
+  private async fetchFromIPFSDirectory(gateway: IPFSGateway, dirCid: string, htmlContent: string): Promise<any> {
+    // Parse HTML to find JSON files
+    const jsonFiles = this.extractJSONFilesFromHTML(htmlContent);
+    
+    if (jsonFiles.length === 0) {
+      console.log('[IPFS] No JSON files found in directory listing');
+      throw new Error('IPFS directory does not contain any JSON files');
+    }
+    
+    console.log(`[IPFS] Found ${jsonFiles.length} JSON files in directory:`, jsonFiles);
+    
+    // Try common distribution file names first
+    const priorityFiles = ['distribution.json', 'merkle.json', 'data.json', 'recipients.json', 'airdrop.json'];
+    
+    for (const priorityFile of priorityFiles) {
+      if (jsonFiles.includes(priorityFile)) {
+        try {
+          console.log(`[IPFS] Attempting to fetch priority file: ${priorityFile}`);
+          const fileUrl = `${gateway.url}${dirCid}/${priorityFile}`;
+          const response = await fetch(fileUrl, {
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`[IPFS] Successfully fetched ${priorityFile} from directory`);
+            return data;
+          }
+        } catch (error) {
+          console.warn(`[IPFS] Failed to fetch ${priorityFile}:`, error);
+        }
+      }
+    }
+    
+    // Try the first JSON file if no priority files found
+    if (jsonFiles.length > 0) {
+      const firstFile = jsonFiles[0];
+      try {
+        console.log(`[IPFS] Attempting to fetch first JSON file: ${firstFile}`);
+        const fileUrl = `${gateway.url}${dirCid}/${firstFile}`;
+        const response = await fetch(fileUrl, {
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[IPFS] Successfully fetched ${firstFile} from directory`);
+          return data;
+        }
+      } catch (error) {
+        console.warn(`[IPFS] Failed to fetch ${firstFile}:`, error);
+      }
+    }
+    
+    throw new Error('Failed to fetch any JSON files from IPFS directory');
+  }
+  
+  /**
+   * Extracts JSON filenames from HTML directory listing
+   */
+  private extractJSONFilesFromHTML(html: string): string[] {
+    const jsonFiles: string[] = [];
+    
+    // Match href attributes pointing to .json files
+    const hrefPattern = /href=["']([^"']*\.json)["']/gi;
+    let match;
+    
+    while ((match = hrefPattern.exec(html)) !== null) {
+      let filename = match[1];
+      // Remove any path prefixes
+      filename = filename.split('/').pop() || filename;
+      if (!jsonFiles.includes(filename)) {
+        jsonFiles.push(filename);
+      }
+    }
+    
+    // Also try to match plain text .json filenames
+    const textPattern = />([^<>]*\.json)</gi;
+    while ((match = textPattern.exec(html)) !== null) {
+      let filename = match[1].trim();
+      if (!jsonFiles.includes(filename)) {
+        jsonFiles.push(filename);
+      }
+    }
+    
+    return jsonFiles;
   }
   
   /**
