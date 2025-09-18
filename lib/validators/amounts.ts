@@ -38,12 +38,12 @@ export function validateAmount(
       };
     }
     
-    // Check if amount is positive
-    if (amountBigInt <= 0n) {
+    // Check if amount is non-negative (allow zero amounts)
+    if (amountBigInt < 0n) {
       return {
         isValid: false,
         amount: amountBigInt,
-        error: 'Amount must be positive'
+        error: 'Amount must be non-negative'
       };
     }
     

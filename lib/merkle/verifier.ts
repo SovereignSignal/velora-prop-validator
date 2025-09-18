@@ -68,14 +68,37 @@ export function validateDistribution(distribution: DistributionData[]): Validati
   });
 
   // Check 3: All amounts are positive
-  const invalidAmounts = distribution.filter(d => {
-    const amount = BigInt(d.amount);
-    return amount <= 0n;
+  const invalidAmounts = distribution.filter((d, index) => {
+    try {
+      // Handle different amount formats
+      if (!d.amount && d.amount !== 0 && d.amount !== '0') {
+        console.warn(`[validateDistribution] Missing amount at index ${index}`);
+        return true; // Missing amount
+      }
+      
+      const amountStr = String(d.amount);
+      
+      // Check for decimal points (not allowed in BigInt)
+      if (amountStr.includes('.') || amountStr.includes('e') || amountStr.includes('E')) {
+        console.warn(`[validateDistribution] Invalid amount format for BigInt at index ${index}: ${amountStr}`);
+        return true; // Invalid format for BigInt
+      }
+      
+      const amount = BigInt(amountStr);
+      const isInvalid = amount < 0n;  // Allow zero amounts, only negative is invalid
+      if (isInvalid && index < 5) {
+        console.warn(`[validateDistribution] Amount is negative at index ${index}: ${amount.toString()}`);
+      }
+      return isInvalid;
+    } catch (error) {
+      console.error(`[validateDistribution] Failed to parse amount at index ${index}: ${d.amount}`, error);
+      return true; // Invalid amount that couldn't be converted
+    }
   });
   checks.push({
     name: 'Amount Validation',
     status: invalidAmounts.length === 0 ? 'passed' : 'failed',
-    description: 'All amounts must be positive',
+    description: 'All amounts must be non-negative',
     details: invalidAmounts.length > 0
       ? `Found ${invalidAmounts.length} invalid amounts`
       : 'All amounts are valid',
@@ -101,7 +124,19 @@ export function validateDistribution(distribution: DistributionData[]): Validati
   });
 
   // Check 5: Total amount is reasonable
-  const totalAmount = distribution.reduce((sum, d) => sum + BigInt(d.amount), 0n);
+  const totalAmount = distribution.reduce((sum, d) => {
+    try {
+      const amountStr = String(d.amount || '0');
+      // Skip invalid amounts
+      if (amountStr.includes('.') || amountStr.includes('e') || amountStr.includes('E')) {
+        return sum;
+      }
+      return sum + BigInt(amountStr);
+    } catch (error) {
+      console.warn(`[validateDistribution] Skipping invalid amount in total calculation: ${d.amount}`);
+      return sum;
+    }
+  }, 0n);
   const avgAmount = distribution.length > 0 ? totalAmount / BigInt(distribution.length) : 0n;
   
   checks.push({
@@ -141,7 +176,19 @@ export async function createVerificationResult(
   const checks = validateDistribution(distribution);
   
   // Calculate basic statistics
-  const totalAmount = distribution.reduce((sum, d) => sum + BigInt(d.amount), 0n);
+  const totalAmount = distribution.reduce((sum, d) => {
+    try {
+      const amountStr = String(d.amount || '0');
+      // Skip invalid amounts
+      if (amountStr.includes('.') || amountStr.includes('e') || amountStr.includes('E')) {
+        return sum;
+      }
+      return sum + BigInt(amountStr);
+    } catch (error) {
+      console.warn(`[createVerificationResult] Skipping invalid amount: ${d.amount}`);
+      return sum;
+    }
+  }, 0n);
   const uniqueAddresses = new Set(distribution.map(d => d.address.toLowerCase())).size;
 
   const result: VerificationResult = {

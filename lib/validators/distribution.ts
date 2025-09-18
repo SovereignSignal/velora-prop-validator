@@ -147,7 +147,7 @@ export async function validateDistribution(
     checks.push({
       name: 'Amount Validation',
       status: 'failed',
-      description: 'All amounts must be positive numbers',
+      description: 'All amounts must be non-negative numbers',
       details: `${amountValidation.invalid.length} invalid amounts`,
       severity: 'critical'
     });
