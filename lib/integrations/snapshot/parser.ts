@@ -17,31 +17,60 @@ export function parseProposal(proposal: SnapshotProposal): ProposalData {
   
   // Extract from proposal body
   const body = proposal.body;
+  console.log('[parseProposal] Parsing proposal body of length:', body.length);
   
   // Extract merkle root (various formats)
   const merkleRootPatterns = [
+    // Standard formats
     /merkle\s*root[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
     /merkleRoot[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
     /root[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
+    // JSON formats
     /"merkleRoot"[:\s]*"(?:0x)?([a-fA-F0-9]{64})"/i,
-    /`(?:0x)?([a-fA-F0-9]{64})`.*merkle/i
+    /"merkle_root"[:\s]*"(?:0x)?([a-fA-F0-9]{64})"/i,
+    // Code blocks
+    /```[\s\S]*?merkleRoot[:\s]+(?:0x)?([a-fA-F0-9]{64})[\s\S]*?```/i,
+    /```json[\s\S]*?"merkleRoot"[:\s]*"(?:0x)?([a-fA-F0-9]{64})"[\s\S]*?```/i,
+    // Table format
+    /\|\s*Merkle\s*Root\s*\|\s*(?:0x)?([a-fA-F0-9]{64})\s*\|/i,
+    // Inline code
+    /`(?:0x)?([a-fA-F0-9]{64})`.*merkle/i,
+    // Bold/emphasis formats
+    /\*\*Merkle\s*Root\*\*[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
+    // Distribution or Treasury Redemption specific
+    /Treasury\s+Merkle\s+Root[:\s]+(?:0x)?([a-fA-F0-9]{64})/i,
+    /Distribution\s+Root[:\s]+(?:0x)?([a-fA-F0-9]{64})/i
   ];
   
   for (const pattern of merkleRootPatterns) {
     const match = body.match(pattern);
     if (match && match[1]) {
       data.merkleRoot = `0x${match[1].toLowerCase()}`;
+      console.log('[parseProposal] Found merkle root:', data.merkleRoot);
       break;
     }
   }
   
+  if (!data.merkleRoot) {
+    console.log('[parseProposal] No merkle root found with standard patterns');
+  }
+  
   // Extract IPFS URLs
   const ipfsPatterns = [
+    // Direct IPFS hashes
     /ipfs[:/]+([Qm][1-9A-HJ-NP-Za-km-z]{44})/g,
     /ipfs[:/]+([a-z0-9]{46,})/g,
-    /(https?:\/\/[^/\s]+\/ipfs\/[Qm][1-9A-HJ-NP-Za-km-z]{44}[^\s]*)/g,
-    /(https?:\/\/[^/\s]+\/ipfs\/[a-z0-9]{46,}[^\s]*)/g,
-    /\[.*?\]\((.*?ipfs.*?)\)/g // Markdown links
+    // Gateway URLs
+    /(https?:\/\/[^/\s]+\/ipfs\/[Qm][1-9A-HJ-NP-Za-km-z]{44}[^\s\)]*)/g,
+    /(https?:\/\/[^/\s]+\/ipfs\/[a-z0-9]{46,}[^\s\)]*)/g,
+    // Common gateways
+    /(https?:\/\/gateway\.pinata\.cloud\/ipfs\/[^\s\)]+)/g,
+    /(https?:\/\/ipfs\.io\/ipfs\/[^\s\)]+)/g,
+    /(https?:\/\/cloudflare-ipfs\.com\/ipfs\/[^\s\)]+)/g,
+    // Markdown links with IPFS
+    /\[.*?\]\((.*?ipfs[:/][^\)]+)\)/g,
+    // Arweave URLs (sometimes used instead of IPFS)
+    /(https?:\/\/arweave\.net\/[^\s\)]+)/g
   ];
   
   for (const pattern of ipfsPatterns) {
@@ -49,10 +78,15 @@ export function parseProposal(proposal: SnapshotProposal): ProposalData {
     for (const match of matches) {
       if (match[1] && !data.ipfsUrl) {
         data.ipfsUrl = match[1];
+        console.log('[parseProposal] Found IPFS URL:', data.ipfsUrl);
         break;
       }
     }
     if (data.ipfsUrl) break;
+  }
+  
+  if (!data.ipfsUrl) {
+    console.log('[parseProposal] No IPFS URL found');
   }
   
   // Extract GitHub URLs
@@ -124,14 +158,30 @@ export function parseProposal(proposal: SnapshotProposal): ProposalData {
   
   // Check plugins for additional data
   if (proposal.plugins) {
+    console.log('[parseProposal] Checking plugins:', Object.keys(proposal.plugins));
+    
     // Check for SafeSnap plugin
     if (proposal.plugins.safeSnap) {
       const safeSnapData = proposal.plugins.safeSnap;
+      console.log('[parseProposal] SafeSnap plugin detected');
+      
       // SafeSnap might contain transaction data
       if (typeof safeSnapData === 'object' && 'txs' in safeSnapData) {
         // Parse transaction data for merkle distributor calls
-        console.log('SafeSnap plugin detected, checking for merkle distributor transactions');
+        console.log('[parseProposal] SafeSnap contains transaction data');
+        // Try to extract merkle root from transaction data
+        const txData = JSON.stringify(safeSnapData);
+        const txMerkleMatch = txData.match(/(?:0x)?([a-fA-F0-9]{64})/);
+        if (txMerkleMatch && !data.merkleRoot) {
+          data.merkleRoot = `0x${txMerkleMatch[1].toLowerCase()}`;
+          console.log('[parseProposal] Found merkle root in SafeSnap data:', data.merkleRoot);
+        }
       }
+    }
+    
+    // Check for other plugins that might contain distribution data
+    if (proposal.plugins.poap) {
+      console.log('[parseProposal] POAP plugin detected');
     }
   }
   
@@ -176,16 +226,18 @@ export function validateProposalData(data: ProposalData): {
   const errors: string[] = [];
   const warnings: string[] = [];
   
+  console.log('[validateProposalData] Validating proposal data:', data);
+  
   // Check for merkle root
   if (!data.merkleRoot) {
-    errors.push('No merkle root found in proposal');
+    errors.push('No merkle root found in proposal. The proposal body should contain a merkle root in format: 0x[64 hex characters]');
   } else if (!/^0x[a-fA-F0-9]{64}$/.test(data.merkleRoot)) {
-    errors.push('Invalid merkle root format');
+    errors.push(`Invalid merkle root format: ${data.merkleRoot}. Expected format: 0x followed by 64 hexadecimal characters`);
   }
   
   // Check for distribution data URL
   if (!data.ipfsUrl && !data.githubUrl && !data.distributionUrl) {
-    errors.push('No distribution data URL found in proposal');
+    errors.push('No distribution data URL found in proposal. The proposal should contain an IPFS link, GitHub link, or other URL to the distribution data');
   }
   
   // Warnings
@@ -196,6 +248,8 @@ export function validateProposalData(data: ProposalData): {
   if (!data.totalAmount) {
     warnings.push('Total distribution amount not found in proposal');
   }
+  
+  console.log('[validateProposalData] Validation result - Valid:', errors.length === 0, 'Errors:', errors.length, 'Warnings:', warnings.length);
   
   return {
     isValid: errors.length === 0,
