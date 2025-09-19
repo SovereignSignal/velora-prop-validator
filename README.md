@@ -2,6 +2,24 @@
 
 A community Vibe Coded tool for validating Velora DAO proposals. Protect treasury funds by ensuring merkle roots match distribution data.
 
+## 📌 TLDR - How It Works
+
+This tool helps verify that Velora DAO token distribution proposals are correct before voting:
+
+1. **Input**: Paste a Snapshot proposal URL (e.g., `snapshot.org/#/veloradao.eth/proposal/0x...`)
+2. **Data Sources**: 
+   - Fetches proposal details from Snapshot's GraphQL API
+   - Downloads distribution data from IPFS (the CSV/JSON file linked in the proposal)
+3. **Verification Process**:
+   - Rebuilds the merkle tree from the distribution data
+   - Compares the calculated merkle root with the one in the proposal
+   - Validates addresses, amounts, and checks for duplicates
+4. **Output**: 
+   - ✅ Green = Distribution matches (safe to vote)
+   - ❌ Red = Mismatch detected (investigate before voting)
+
+**Why this matters**: DAOs distribute millions in tokens. A wrong merkle root could mean recipients get incorrect amounts or tokens go to wrong addresses.
+
 ## Overview
 
 DAOs distribute millions of dollars in tokens through Snapshot proposals every month. These distributions rely on merkle trees - cryptographic proofs that ensure each recipient gets exactly what they're owed. The Velora Verification System makes it simple for anyone to verify these distributions are correct before voting.
