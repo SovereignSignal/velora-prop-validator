@@ -1,6 +1,6 @@
-# Velora Verification System
+# Velora Prop Validator
 
-A powerful web-based tool for instantly verifying DAO token distributions before voting. Protect treasury funds by ensuring merkle roots match distribution data.
+A community Vibe Coded tool for validating Velora DAO proposals. Protect treasury funds by ensuring merkle roots match distribution data.
 
 ## Overview
 
@@ -24,10 +24,10 @@ DAOs distribute millions of dollars in tokens through Snapshot proposals every m
 
 ### Installation
 
-1. Clone the repository:
+1. Clone or download the repository:
 ```bash
-git clone https://github.com/yourusername/velora-verifier.git
-cd velora-verifier
+git clone <your-repository-url>
+cd velora-prop-validator
 ```
 
 2. Install dependencies:
@@ -39,12 +39,19 @@ yarn install
 
 3. Run the development server:
 ```bash
-npm run dev
+npm run dev  # Uses Next.js with Turbopack
 # or
 yarn dev
 ```
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+### Available Scripts
+
+- `npm run dev` - Start development server with Turbopack
+- `npm run build` - Build for production with Turbopack  
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
 
 ## Usage
 
@@ -93,7 +100,7 @@ Click "Show Advanced Options" to access:
 ## Project Structure
 
 ```
-velora-verifier/
+velora-prop-validator/
 ├── app/                      # Next.js app directory
 │   ├── api/                  # API routes
 │   └── page.tsx             # Main UI
@@ -119,40 +126,14 @@ NEXT_PUBLIC_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 NEXT_PUBLIC_SNAPSHOT_API=https://hub.snapshot.org/graphql
 ```
 
-## Testing
-
-Run the test suite:
-
-```bash
-npm run test
-```
-
-Run end-to-end tests:
-
-```bash
-npm run test:e2e
-```
 
 ## Deployment
 
 ### Vercel (Recommended)
 
-1. Push to GitHub
+1. Push to your repository
 2. Import to Vercel
-3. Deploy with default settings
-
-### Railway
-
-```bash
-railway up
-```
-
-### Docker
-
-```bash
-docker build -t velora-verifier .
-docker run -p 3000:3000 velora-verifier
-```
+3. Deploy with default Next.js settings
 
 ## Contributing
 
@@ -177,7 +158,9 @@ MIT License - see LICENSE file for details
 
 ## Acknowledgments
 
-- Built with Next.js, TypeScript, and Tailwind CSS
+- A community Vibe Coded tool for the Velora DAO ecosystem
+- Built with Next.js 15.5.3, TypeScript, and Tailwind CSS v4
+- Uses Turbopack for fast builds and hot module replacement
 - Merkle tree implementation using merkletreejs
 - IPFS integration with multi-gateway fallback
 - Snapshot GraphQL API for proposal data
@@ -186,8 +169,7 @@ MIT License - see LICENSE file for details
 
 For issues, questions, or suggestions:
 - Open an issue on GitHub
-- Contact: support@velora.xyz
 
 ---
 
-Built to protect DAO treasuries and ensure accurate token distributions.
+A community Vibe Coded tool for validating Velora DAO proposals.

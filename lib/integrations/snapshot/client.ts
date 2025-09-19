@@ -15,7 +15,7 @@ export class SnapshotClient {
       fetch,
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Velora-Verifier/1.0'
+        'User-Agent': 'Velora-Prop-Validator/1.0'
       }
     });
     

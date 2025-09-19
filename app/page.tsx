@@ -50,10 +50,10 @@ export default function Home() {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold text-white mb-4 tracking-tight">
-            Velora Verification System
+            Velora Prop Validator
           </h1>
           <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-            Instantly verify DAO token distributions before voting. 
+            A community Vibe Coded tool for validating Velora DAO proposals. 
             Protect treasury funds with merkle root verification.
           </p>
         </div>

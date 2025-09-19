@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Velora Verification System",
-  description: "Instantly verify DAO token distributions before voting. Protect treasury funds by ensuring merkle roots match distribution data.",
+  title: "Velora Prop Validator",
+  description: "A community Vibe Coded tool for validating Velora DAO proposals. Protect treasury funds by ensuring merkle roots match distribution data.",
 };
 
 export default function RootLayout({
